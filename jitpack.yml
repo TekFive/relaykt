@@ -1,0 +1,5 @@
+# JitPack builds with the Gradle toolchain; the foojay resolver in settings.gradle.kts downloads JDK 25.
+jdk:
+  - openjdk21
+install:
+  - ./gradlew publishToMavenLocal -x test --no-daemon

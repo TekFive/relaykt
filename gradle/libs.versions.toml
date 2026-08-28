@@ -1,0 +1,31 @@
+[versions]
+kotlin = "2.4.10"
+okhttp = "5.4.0"
+jakarta-mail = "2.0.2"
+junit-jupiter = "5.12.2"
+slf4j = "2.0.16"
+postgresql = "42.7.11"
+testcontainers = "1.21.4"
+tekfive-keep = "v1.0.9"
+tekfive-ack = "v1.0.0"
+tekfive-jfk = "v1.0.1"
+
+[libraries]
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+jakarta-mail = { module = "com.sun.mail:jakarta.mail", version.ref = "jakarta-mail" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+tekfive-keep = { module = "com.github.TekFive:keep", version.ref = "tekfive-keep" }
+tekfive-ack = { module = "com.github.TekFive:ack", version.ref = "tekfive-ack" }
+tekfive-jfk = { module = "com.github.TekFive:jfk", version.ref = "tekfive-jfk" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

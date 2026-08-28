@@ -1,0 +1,17 @@
+# Legacy library kept locally for reference only; never part of this repository.
+konnekt/
+
+build/
+target/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.zip
+*.tar.gz
+
+.gradle/
+.kotlin/
+.idea/
+*.iml
+.worktrees/

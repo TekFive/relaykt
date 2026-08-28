@@ -1,0 +1,28 @@
+name: publish
+
+# Publishes this org.tekfive library to THIS repository's own GitHub Packages registry
+# (maven.pkg.github.com/<owner>/<repo>, resolved automatically from GITHUB_REPOSITORY).
+# No PAT required: the built-in GITHUB_TOKEN can write packages to its own repo.
+#
+# Publish in dependency order across the libs: ack + jfk first, then keep, then relaykt.
+# GitHub Packages release versions are immutable -- bump the library version to republish.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - run: ./gradlew publish --no-daemon --refresh-dependencies -Pkotlin.mpp.keepMppDependenciesIntactInPoms=true -Pgpr.user="${{ github.actor }}" -Pgpr.key="${{ secrets.GITHUB_TOKEN }}"
