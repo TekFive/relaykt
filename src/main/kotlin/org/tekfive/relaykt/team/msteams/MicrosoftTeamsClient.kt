@@ -11,7 +11,7 @@ import org.tekfive.relaykt.provider.ProviderException
 /** Posts Adaptive Card envelopes to a Microsoft Teams webhook. */
 open class MicrosoftTeamsClient(
     private val configuration: MicrosoftTeamsConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.webhookUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.webhookUrl, client, executeOverride) {
 

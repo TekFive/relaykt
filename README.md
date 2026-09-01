@@ -66,17 +66,45 @@ val status: DeliveryStatus? = Relay.status(result.messageId, endpoint)
 
 | Provider id | Channel | Configuration keys | Capabilities |
 |---|---|---|---|
-| `smtp` | email | `host`, `port`, `startTls`, `sslEnabled`, `authenticate`, `username`, `password`, timeouts | attachments, multiple recipients |
-| `sendgrid` | email | `apiKey`, `baseUrl` | + status lookup |
-| `zeptomail` | email | `sendMailToken`, `oauthAccessToken` (status), `bounceAddress`, `trackOpens`, `trackClicks` | + status lookup |
-| `twilio-sms` | sms | `accountSid`, `authToken`, `fromNumber` or `messagingServiceSid`, `baseUrl` | status lookup |
-| `slack` | team | `botToken`, `baseUrl` | multiple recipients (channels, ids, user emails) |
-| `msteams` | team | `webhookUrl` | priority (Adaptive Card) |
-| `tigerconnect` | team | `apiKey`, `apiSecret`, `baseUrl` | priority, status lookup, multiple recipients (users, groups, roles, distribution lists) |
+| `smtp` | email | `host`, `port`, `startTls`, `sslEnabled`, `authenticate`, `username`, `password`, timeouts, `tls` | attachments, multiple recipients |
+| `sendgrid` | email | `apiKey`, `baseUrl`, `tls` | + status lookup |
+| `zeptomail` | email | `sendMailToken`, `oauthAccessToken` (status), `bounceAddress`, `trackOpens`, `trackClicks`, `tls` | + status lookup |
+| `twilio-sms` | sms | `accountSid`, `authToken`, `fromNumber` or `messagingServiceSid`, `baseUrl`, `tls` | status lookup |
+| `slack` | team | `botToken`, `baseUrl`, `tls` | multiple recipients (channels, ids, user emails) |
+| `msteams` | team | `webhookUrl`, `tls` | priority (Adaptive Card) |
+| `tigerconnect` | team | `apiKey`, `apiSecret`, `baseUrl`, `tls` | priority, status lookup, multiple recipients (users, groups, roles, distribution lists) |
 | `memory-email` / `memory-sms` / `memory-team` | all | none | everything — records messages for tests (`InMemoryProvider`) |
 
 Each provider has a typed `*Configuration` class documenting its keys; every `baseUrl` / `webhookUrl` must be https (loopback hosts excepted for tests), and `Relay` runs the provider's `validateConfiguration` before any send or enqueue. Add your own provider by
 implementing `Provider<M>` and calling `ProviderRegistry.register(provider)`.
+
+### TLS certificate pinning
+
+Every built-in external provider has a strongly typed `TlsConfiguration` value. Its certificate
+pins are SHA-256 hashes of certificate public keys in standard `sha256/<base64>` form. Pinning
+verifies the remote server during the TLS handshake; the pin itself is not transmitted. Normal
+CA-chain and hostname validation still run, and any certificate in the validated chain may satisfy
+a configured pin. Supply at least two pins during certificate rotation:
+
+```kotlin
+val endpoint = Endpoint(
+    id = "transactional-email",
+    providerId = SendGridProvider.id,
+    configuration = SendGridConfiguration(
+        apiKey = System.getenv("SENDGRID_API_KEY"),
+        tls = TlsConfiguration.pinned(
+            "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", // current key
+            "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", // backup key
+        ),
+    ).toJsonObject(),
+)
+```
+
+HTTP providers pin the exact hostname in their configured URL. SMTP pinning applies to both
+STARTTLS and implicit SSL and is rejected when TLS is disabled. Pinned HTTP clients reject redirects
+because a different destination hostname would not be covered by the configured pins. A pin
+mismatch fails as a recoverable network error, allowing a durable queued message to retry after
+certificate rotation or configuration repair.
 
 ## Durable queue
 
@@ -147,7 +175,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.0")
+    implementation("com.github.TekFive:relaykt:v1.0.1")
 }
 ```
 

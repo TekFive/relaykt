@@ -17,7 +17,7 @@ data class SlackPostMessageResponse(val channel: String, val ts: String) {
 /** Minimal Slack Web API client: post messages and resolve users/channels. */
 open class SlackClient(
     private val configuration: SlackConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 

@@ -10,7 +10,7 @@ import org.tekfive.relaykt.http.RelayHttpClient
 /** Minimal TigerConnect REST client (https://developer.tigertext.com/reference/rest-api). */
 open class TigerConnectClient(
     private val configuration: TigerConnectConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 

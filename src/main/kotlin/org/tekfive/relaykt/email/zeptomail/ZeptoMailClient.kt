@@ -10,7 +10,7 @@ import org.tekfive.relaykt.http.RelayHttpClient
 /** Minimal ZeptoMail client for the send-mail and email-status APIs. */
 open class ZeptoMailClient(
     private val configuration: ZeptoMailConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 

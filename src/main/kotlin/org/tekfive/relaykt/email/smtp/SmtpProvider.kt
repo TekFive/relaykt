@@ -25,6 +25,7 @@ import org.tekfive.relaykt.SendResult
 import org.tekfive.relaykt.email.EmailMessage
 import org.tekfive.relaykt.provider.Provider
 import org.tekfive.relaykt.provider.ProviderConfigurations
+import org.tekfive.relaykt.tls.TlsCertificatePins
 import java.util.Properties
 import jakarta.mail.MessagingException as JakartaMessagingException
 
@@ -132,6 +133,10 @@ object SmtpProvider : Provider<EmailMessage> {
             put("mail.smtp.connectiontimeout", (configuration.connectionTimeoutMSecs ?: connectionTimeoutDefaultMSecsAck()).toString())
             put("mail.smtp.timeout", (configuration.timeoutMSecs ?: timeoutDefaultMSecsAck()).toString())
             put("mail.smtp.writetimeout", (configuration.writeTimeoutMSecs ?: writeTimeoutDefaultMSecsAck()).toString())
+            if (configuration.tls.certificatePinningEnabled) {
+                put("mail.smtp.ssl.socketFactory", TlsCertificatePins.smtpSocketFactory(configuration.tls.certificatePins))
+                put("mail.smtp.ssl.socketFactory.fallback", "false")
+            }
         }
     }
 

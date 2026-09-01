@@ -10,7 +10,7 @@ import org.tekfive.relaykt.http.RelayHttpClient
 /** Minimal Twilio SendGrid client covering mail send and email-activity lookup. */
 open class SendGridClient(
     private val configuration: SendGridConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 

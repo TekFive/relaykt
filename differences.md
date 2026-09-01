@@ -80,7 +80,9 @@ transition, receipt-persistence failures never flipping a sent message to FAILED
 
 All HTTP provider clients extend one `JsonHttpClient` base (URL building, auth headers, scrubbed
 status-only errors, 404→null lookups, `executeOverride` for tests) instead of five near-identical
-hand-written clients.
+hand-written clients. Every external provider, including SMTP, accepts a strongly typed
+`TlsConfiguration` containing SHA-256 SPKI pins. HTTP clients enforce them with OkHttp and SMTP uses
+a platform-trust-delegating TLS trust manager, so pinning never replaces CA or hostname validation.
 
 | Provider | Change |
 |---|---|

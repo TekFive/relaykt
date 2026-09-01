@@ -8,7 +8,10 @@ import org.tekfive.relaykt.MessageAddress
 import org.tekfive.relaykt.email.smtp.SmtpConfiguration
 import org.tekfive.relaykt.email.smtp.SmtpProvider
 import org.tekfive.relaykt.support.TestMessages
+import org.tekfive.relaykt.tls.TlsCertificatePinsTest
+import org.tekfive.relaykt.tls.TlsConfiguration
 import java.util.Properties
+import javax.net.ssl.SSLSocketFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -37,6 +40,27 @@ class SmtpProviderTest {
         assertEquals("true", SmtpProvider.buildSessionProperties(configuration)["mail.smtp.auth"])
         assertNotNull(SmtpProvider.buildAuthenticator(configuration))
         assertEquals(false, configuration.toString().contains("secret"))
+    }
+
+    @Test
+    fun `certificate pins configure a non-fallback TLS socket factory`() {
+        val configuration = SmtpConfiguration(
+            host = "smtp.example.com",
+            tls = TlsConfiguration.pinned(TlsCertificatePinsTest.TEST_PIN),
+        )
+
+        val properties = SmtpProvider.buildSessionProperties(configuration)
+
+        assertNotNull(properties["mail.smtp.ssl.socketFactory"] as? SSLSocketFactory)
+        assertEquals("false", properties["mail.smtp.ssl.socketFactory.fallback"])
+        assertFailsWith<IllegalArgumentException> {
+            SmtpConfiguration(
+                host = "smtp.example.com",
+                startTls = false,
+                sslEnabled = false,
+                tls = TlsConfiguration.pinned(TlsCertificatePinsTest.TEST_PIN),
+            )
+        }
     }
 
     @Test

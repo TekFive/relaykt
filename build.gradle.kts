@@ -12,9 +12,9 @@ group = if (isJitPackBuild) {
     "org.tekfive"
 }
 version = if (isJitPackBuild) {
-    providers.environmentVariable("VERSION").getOrElse("1.0.0")
+    providers.environmentVariable("VERSION").getOrElse("1.0.1")
 } else {
-    "1.0.0"
+    "1.0.1"
 }
 
 java {

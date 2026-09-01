@@ -12,6 +12,8 @@ import org.tekfive.relaykt.endpoint.Endpoint
 import org.tekfive.relaykt.Relay
 import org.tekfive.relaykt.support.StubHttp
 import org.tekfive.relaykt.support.TestMessages
+import org.tekfive.relaykt.tls.TlsConfiguration
+import org.tekfive.relaykt.tls.TlsCertificatePinsTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -80,5 +82,20 @@ class SendGridProviderTest {
         assertTrue(!SendGridConfiguration("SG.secret").toString().contains("secret"))
         assertFailsWith<IllegalArgumentException> { SendGridConfiguration("SG.key", baseUrl = "http://api.sendgrid.com") }
         SendGridConfiguration("SG.key", baseUrl = "http://localhost:9999/")
+        val pinned = SendGridConfiguration.fromJson(json {
+            "apiKey" set "SG.key"
+            "tls" set TlsConfiguration.pinned(TlsCertificatePinsTest.TEST_PIN)
+        })
+        assertEquals(TlsConfiguration.pinned(TlsCertificatePinsTest.TEST_PIN), pinned.tls)
+        assertFailsWith<IllegalArgumentException> {
+            SendGridConfiguration("SG.key", tls = TlsConfiguration.pinned("sha256/invalid"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SendGridConfiguration(
+                "SG.key",
+                baseUrl = "http://localhost:9999",
+                tls = TlsConfiguration.pinned(TlsCertificatePinsTest.TEST_PIN),
+            )
+        }
     }
 }

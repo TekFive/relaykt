@@ -3,6 +3,7 @@ package org.tekfive.relaykt.email.zeptomail
 import org.tekfive.jfk.FromJsonObject
 import org.tekfive.jfk.ToJsonObject
 import org.tekfive.relaykt.provider.SecureUrls
+import org.tekfive.relaykt.tls.TlsConfiguration
 
 /**
  * Endpoint configuration for [ZeptoMailProvider]. [sendMailToken] authorizes sending; the optional
@@ -16,11 +17,13 @@ data class ZeptoMailConfiguration(
     val bounceAddress: String? = null,
     val trackOpens: Boolean? = null,
     val trackClicks: Boolean? = null,
+    val tls: TlsConfiguration = TlsConfiguration(),
 ) : ToJsonObject {
 
     init {
         require(sendMailToken.isNotBlank()) { "ZeptoMail sendMailToken is required" }
         SecureUrls.requireHttps(normalizedBaseUrl, "ZeptoMail baseUrl")
+        tls.validateForUrl(normalizedBaseUrl, "ZeptoMail baseUrl")
     }
 
     val sendAuthorizationHeader: String
@@ -32,7 +35,7 @@ data class ZeptoMailConfiguration(
     val normalizedBaseUrl: String
         get() = (baseUrl ?: DEFAULT_BASE_URL).trimEnd('/')
 
-    override fun toString(): String = "ZeptoMailConfiguration(sendMailToken=REDACTED, oauthAccessToken=REDACTED, baseUrl=$baseUrl)"
+    override fun toString(): String = "ZeptoMailConfiguration(sendMailToken=REDACTED, oauthAccessToken=REDACTED, baseUrl=$baseUrl, tls=$tls)"
 
     companion object : FromJsonObject<ZeptoMailConfiguration> {
         const val DEFAULT_BASE_URL: String = "https://api.zeptomail.com"

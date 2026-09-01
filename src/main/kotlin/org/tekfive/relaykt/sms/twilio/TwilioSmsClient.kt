@@ -24,7 +24,7 @@ data class TwilioSmsMessageResponse(
 /** Minimal Twilio Programmable Messaging client. */
 open class TwilioSmsClient(
     private val configuration: TwilioSmsConfiguration,
-    client: OkHttpClient = RelayHttpClient.client,
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 
