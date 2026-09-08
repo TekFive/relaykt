@@ -9,7 +9,7 @@ import org.tekfive.relaykt.MessageAddress
 /**
  * A message to a team-collaboration system (Slack, Microsoft Teams, TigerConnect). Recipient
  * addresses are interpreted by the provider: Slack accepts channel names/ids and user emails,
- * TigerConnect accepts user emails and group/role/distribution-list names, Microsoft Teams
+ * TigerConnect accepts user addresses, group/role/distribution-list names and explicit type:token targets, Microsoft Teams
  * webhooks target a fixed channel and treat recipients as informational.
  */
 class TeamMessage(

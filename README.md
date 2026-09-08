@@ -72,11 +72,17 @@ val status: DeliveryStatus? = Relay.status(result.messageId, endpoint)
 | `twilio-sms` | sms | `accountSid`, `authToken`, `fromNumber` or `messagingServiceSid`, `baseUrl`, `tls` | status lookup |
 | `slack` | team | `botToken`, `baseUrl`, `tls` | multiple recipients (channels, ids, user emails) |
 | `msteams` | team | `webhookUrl`, `tls` | priority (Adaptive Card) |
-| `tigerconnect` | team | `apiKey`, `apiSecret`, `baseUrl`, `tls` | priority, status lookup, multiple recipients (users, groups, roles, distribution lists) |
+| `tigerconnect` | team | `apiKey`, `apiSecret`, `baseUrl`, `organizationId` (names/roles), `senderUserId` (roles), `tls` | priority, status lookup, multiple recipients (users, groups, roles, distribution lists) |
 | `memory-email` / `memory-sms` / `memory-team` | all | none | everything — records messages for tests (`InMemoryProvider`) |
 
 Each provider has a typed `*Configuration` class documenting its keys; every `baseUrl` / `webhookUrl` must be https (loopback hosts excepted for tests), and `Relay` runs the provider's `validateConfiguration` before any send or enqueue. Add your own provider by
 implementing `Provider<M>` and calling `ProviderRegistry.register(provider)`.
+
+TigerConnect uses the v2 API and has a documented UAT environment. See
+[TigerConnect setup, API research, and live tests](docs/tigerconnect.md) for credentials, recipient
+formats, and `./gradlew tigerConnectLiveTest`. Local tests pass against the published contract;
+authenticated vendor verification requires a provisioned test tenant. HIGH and URGENT both map to
+TigerConnect's high priority, and subjects are included as a heading in the message body.
 
 ### TLS certificate pinning
 
@@ -175,7 +181,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.1")
+    implementation("com.github.TekFive:relaykt:v1.0.2")
 }
 ```
 

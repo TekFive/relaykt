@@ -12,9 +12,9 @@ group = if (isJitPackBuild) {
     "org.tekfive"
 }
 version = if (isJitPackBuild) {
-    providers.environmentVariable("VERSION").getOrElse("1.0.1")
+    providers.environmentVariable("VERSION").getOrElse("1.0.2")
 } else {
-    "1.0.1"
+    "1.0.2"
 }
 
 java {
@@ -61,11 +61,29 @@ dependencies {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("tigerconnect-live")
+    }
     // Integration tests need Docker (Testcontainers); they skip themselves when it is unavailable.
     testLogging {
         events("failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
+
+tasks.register<Test>("tigerConnectLiveTest") {
+    description = "Checks TigerConnect against an explicitly configured test tenant (see docs/tigerconnect.md)."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform {
+        includeTags("tigerconnect-live")
+    }
+    // Credentials and remote state can change without changing the compiled tests.
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Uses a live TigerConnect tenant") { true }
+    testLogging {
+        events("passed", "failed", "skipped")
     }
 }
 

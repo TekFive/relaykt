@@ -33,10 +33,19 @@ object TigerConnectProvider : Provider<TeamMessage> {
     }
 
     override fun send(message: TeamMessage, configuration: JsonObject): SendResult {
-        val client = clientFactory(ProviderConfigurations.parse(TigerConnectConfiguration, configuration))
+        val parsed = ProviderConfigurations.parse(TigerConnectConfiguration, configuration)
+        val client = clientFactory(parsed)
         val resolution = TigerConnectRecipientResolver(client).resolveAll(message.to)
         if (resolution.unresolved.isNotEmpty()) {
             throw RelayException("TigerConnect could not resolve ${resolution.unresolved.size} of ${message.to.size} recipients")
+        }
+        if (resolution.resolved.any { it.targetType == "role" }) {
+            require(!parsed.organizationId.isNullOrBlank() && !parsed.senderUserId.isNullOrBlank()) {
+                "TigerConnect role messages require organizationId and senderUserId"
+            }
+            require(resolution.resolved.none { it.targetType == "role" && it.targetId == parsed.senderUserId }) {
+                "TigerConnect role recipient must differ from the sender"
+            }
         }
 
         val messageIds = linkedMapOf<String, String>()
@@ -50,6 +59,7 @@ object TigerConnectProvider : Provider<TeamMessage> {
             )
             try {
                 val messageId = client.sendMessage(request).resolvedMessageId
+                    ?.takeIf { it.isNotBlank() }
                     ?: throw ProviderException("TigerConnect response did not include a message id")
                 messageIds[resolved.recipient.address] = messageId
             } catch (e: Exception) {
@@ -70,7 +80,13 @@ object TigerConnectProvider : Provider<TeamMessage> {
         val statuses = ids.map { id ->
             // Isolate per-id failures so one bad lookup does not abort the whole status check.
             try {
-                mapStatus(client.getMessageStatus(id)?.status)
+                val response = client.getMessageStatus(id)
+                when {
+                    response == null -> DeliveryStatus.UNKNOWN
+                    response.isRecalled -> DeliveryStatus.FAILED
+                    response.recipientStatuses.isNotEmpty() -> aggregateStatus(response.recipientStatuses.map(::mapStatus))
+                    else -> mapStatus(response.status)
+                }
             } catch (e: ProviderException) {
                 log.warn("TigerConnect status lookup failed for 1 of {} message ids", ids.size, e)
                 DeliveryStatus.UNKNOWN
@@ -85,14 +101,14 @@ object TigerConnectProvider : Provider<TeamMessage> {
     private fun encodePriority(priority: TeamMessagePriority): String? = when (priority) {
         TeamMessagePriority.NORMAL -> null
         TeamMessagePriority.HIGH -> "high"
-        TeamMessagePriority.URGENT -> "urgent"
+        TeamMessagePriority.URGENT -> "high"
     }
 
     internal fun mapStatus(status: String?): DeliveryStatus = when (status?.lowercase()) {
         "queued", "pending" -> DeliveryStatus.QUEUED
-        "sent" -> DeliveryStatus.SENT
+        "sent", "new" -> DeliveryStatus.SENT
         "delivered" -> DeliveryStatus.DELIVERED
-        "read" -> DeliveryStatus.READ
+        "read", "confirmed" -> DeliveryStatus.READ
         "failed", "error" -> DeliveryStatus.FAILED
         else -> DeliveryStatus.UNKNOWN
     }
@@ -106,7 +122,8 @@ object TigerConnectProvider : Provider<TeamMessage> {
         statuses.any { it == DeliveryStatus.FAILED } -> DeliveryStatus.FAILED
         statuses.all { it == DeliveryStatus.READ } -> DeliveryStatus.READ
         statuses.all { it == DeliveryStatus.DELIVERED || it == DeliveryStatus.READ } -> DeliveryStatus.DELIVERED
-        statuses.all { it == DeliveryStatus.UNKNOWN } -> DeliveryStatus.UNKNOWN
+        statuses.any { it == DeliveryStatus.UNKNOWN } -> DeliveryStatus.UNKNOWN
+        statuses.any { it == DeliveryStatus.QUEUED } -> DeliveryStatus.QUEUED
         else -> DeliveryStatus.SENT
     }
 }
