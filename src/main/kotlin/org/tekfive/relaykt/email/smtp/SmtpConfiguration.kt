@@ -21,8 +21,8 @@ data class SmtpConfiguration(
 
     init {
         require(host.isNotBlank()) { "SMTP host is required" }
-        require(!tls.certificatePinningEnabled || startTls != false || sslEnabled == true) {
-            "SMTP TLS certificate pins require STARTTLS or SSL"
+        require(!tls.customTrustEnabled || startTls != false || sslEnabled == true) {
+            "SMTP custom TLS settings require STARTTLS or SSL"
         }
     }
 

@@ -84,11 +84,23 @@ formats, and `./gradlew tigerConnectLiveTest`. Local tests pass against the publ
 authenticated vendor verification requires a provisioned test tenant. HIGH and URGENT both map to
 TigerConnect's high priority, and subjects are included as a heading in the message body.
 
-### TLS certificate pinning
+### CA certificates and pinning
+
+Every built-in external provider accepts an optional `TlsConfiguration.caCertificate` PEM bundle.
+Null or blank uses the platform trust store. A configured bundle replaces platform trust for that
+endpoint only and must contain valid CA certificates. Include both CAs during CA rotation.
+Hostname and server certificate validity checks remain enabled. HTTP and SMTP support the same
+trust rules, including asynchronous and queued delivery.
+
+```kotlin
+val tls = TlsConfiguration(caCertificate = caPem)
+// A pin adds a restriction; it never substitutes for CA validation.
+val restricted = TlsConfiguration(certificatePins = listOf(serverKeyPin), caCertificate = caPem)
+```
 
 Every built-in external provider has a strongly typed `TlsConfiguration` value. Its certificate
 pins are SHA-256 hashes of certificate public keys in standard `sha256/<base64>` form. Pinning
-verifies the remote server during the TLS handshake; the pin itself is not transmitted. Normal
+verifies the remote server during the TLS handshake; the pin itself is not transmitted. Configured or platform
 CA-chain and hostname validation still run, and any certificate in the validated chain may satisfy
 a configured pin. Supply at least two pins during certificate rotation:
 
@@ -106,9 +118,10 @@ val endpoint = Endpoint(
 )
 ```
 
-HTTP providers pin the exact hostname in their configured URL. SMTP pinning applies to both
-STARTTLS and implicit SSL and is rejected when TLS is disabled. Pinned HTTP clients reject redirects
-because a different destination hostname would not be covered by the configured pins. A pin
+HTTP providers pin the exact hostname in their configured URL. SMTP custom trust applies to both
+STARTTLS and implicit SSL and is rejected when TLS is disabled. HTTP clients with custom trust reject redirects
+to keep CA trust and pins scoped to the configured endpoint. SMTP checks pins against the built
+certificate path, so unrelated certificates appended by a peer cannot satisfy a pin. A pin
 mismatch fails as a recoverable network error, allowing a durable queued message to retry after
 certificate rotation or configuration repair.
 
@@ -181,7 +194,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.2")
+    implementation("com.github.TekFive:relaykt:v1.0.3")
 }
 ```
 

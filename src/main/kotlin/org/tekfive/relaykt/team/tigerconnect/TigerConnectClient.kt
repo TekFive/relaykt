@@ -12,7 +12,7 @@ import org.tekfive.relaykt.provider.ProviderException
 /** TigerConnect v2 REST client. Contract sources and UAT setup are in docs/tigerconnect.md. */
 open class TigerConnectClient(
     private val configuration: TigerConnectConfiguration,
-    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls.certificatePins),
+    client: OkHttpClient = RelayHttpClient.clientFor(configuration.normalizedBaseUrl, configuration.tls),
     executeOverride: ((Request) -> HttpResponse)? = null,
 ) : JsonHttpClient(configuration.normalizedBaseUrl, client, executeOverride) {
 

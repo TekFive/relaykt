@@ -1,9 +1,10 @@
 package org.tekfive.relaykt.http
 
-import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.tekfive.ack.Ack
+import org.tekfive.relaykt.tls.TlsConfiguration
+import org.tekfive.relaykt.tls.TlsHttpClient
 import org.tekfive.relaykt.tls.TlsCertificatePins
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -15,7 +16,7 @@ import java.util.concurrent.TimeUnit
  */
 object RelayHttpClient {
 
-    private data class PinnedClientKey(val host: String, val pins: List<String>)
+    private data class PinnedClientKey(val host: String, val pins: List<String>, val caCertificate: String?)
 
     private val pinnedClients = ConcurrentHashMap<PinnedClientKey, OkHttpClient>()
 
@@ -39,24 +40,19 @@ object RelayHttpClient {
      * the shared connection pool and requires one of [pins] for the exact host in [baseUrl].
      */
     fun clientFor(baseUrl: String, pins: List<String>): OkHttpClient {
-        val normalizedPins = TlsCertificatePins.normalize(pins)
-        if (normalizedPins.isEmpty()) {
+        return clientFor(baseUrl, TlsConfiguration(pins))
+    }
+
+    fun clientFor(baseUrl: String, tls: TlsConfiguration): OkHttpClient {
+        val normalizedPins = TlsCertificatePins.normalize(tls.certificatePins)
+        if (!tls.customTrustEnabled) {
             return client
         }
         val url = baseUrl.toHttpUrl()
-        require(url.isHttps) { "TLS certificate pins require an https base URL" }
-        val key = PinnedClientKey(url.host, normalizedPins)
+        require(url.isHttps) { "Custom TLS settings require an https base URL" }
+        val key = PinnedClientKey(url.host, normalizedPins, tls.caCertificate?.trim())
         return pinnedClients.computeIfAbsent(key) {
-            val certificatePinner = CertificatePinner.Builder()
-                .add(url.host, *normalizedPins.toTypedArray())
-                .build()
-            // A redirect to another hostname would fall outside the exact-host pin set. Reject it
-            // rather than silently continuing the request over an unpinned TLS connection.
-            client.newBuilder()
-                .certificatePinner(certificatePinner)
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .build()
+            TlsHttpClient.configure(client.newBuilder(), baseUrl, tls).build()
         }
     }
 

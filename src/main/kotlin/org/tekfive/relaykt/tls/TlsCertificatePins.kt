@@ -2,8 +2,15 @@ package org.tekfive.relaykt.tls
 
 import java.net.Socket
 import java.net.URI
-import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.GeneralSecurityException
+import java.security.cert.CertPathBuilder
+import java.security.cert.CertStore
+import java.security.cert.CollectionCertStoreParameters
+import java.security.cert.PKIXBuilderParameters
+import java.security.cert.PKIXCertPathBuilderResult
+import java.security.cert.TrustAnchor
+import java.security.cert.X509CertSelector
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.Base64
@@ -11,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509ExtendedTrustManager
 import javax.net.ssl.X509TrustManager
 
@@ -19,7 +25,7 @@ import javax.net.ssl.X509TrustManager
  * Validation and TLS plumbing for SHA-256 Subject Public Key Info (SPKI) certificate pins.
  *
  * Pins use the same `sha256/<base64>` representation as OkHttp. Pinning is additive to the
- * platform trust store: a server certificate must both chain to a trusted CA and match at least
+ * configured or platform trust store: a server certificate must both chain to a trusted CA and match at least
  * one configured pin. Multiple pins should be configured during certificate rotation.
  */
 object TlsCertificatePins {
@@ -27,7 +33,9 @@ object TlsCertificatePins {
     private const val SHA256_PREFIX = "sha256/"
     private const val SHA256_BYTES = 32
 
-    private val smtpSocketFactories = ConcurrentHashMap<List<String>, SSLSocketFactory>()
+    private data class TrustKey(val pins: List<String>, val caCertificate: String?)
+
+    private val smtpSocketFactories = ConcurrentHashMap<TrustKey, SSLSocketFactory>()
 
     /** Trims, validates, and de-duplicates [pins] while retaining their order. */
     fun normalize(pins: List<String>): List<String> {
@@ -66,24 +74,28 @@ object TlsCertificatePins {
     }
 
     /**
-     * Builds an SSL socket factory for Jakarta Mail. Platform trust validation runs first, then at
-     * least one certificate in the validated chain must match one of [pins].
+     * Builds an SSL socket factory for Jakarta Mail. CA trust validation runs first, then at
+     * least one certificate in the validated chain must match one of [pins], when pins are supplied.
      */
-    fun smtpSocketFactory(pins: List<String>): SSLSocketFactory {
+    fun smtpSocketFactory(pins: List<String>, caCertificate: String? = null): SSLSocketFactory {
         val normalizedPins = normalize(pins)
-        require(normalizedPins.isNotEmpty()) { "At least one TLS certificate pin is required" }
-        return smtpSocketFactories.computeIfAbsent(normalizedPins) {
+        val key = TrustKey(normalizedPins, caCertificate?.trim()?.takeIf { it.isNotEmpty() })
+        require(normalizedPins.isNotEmpty() || key.caCertificate != null) { "Custom TLS settings are required" }
+        return smtpSocketFactories.computeIfAbsent(key) {
             val context = SSLContext.getInstance("TLS")
-            context.init(null, arrayOf(PinnedTrustManager(platformTrustManager(), normalizedPins.toSet())), null)
+            context.init(null, arrayOf(trustManager(normalizedPins, key.caCertificate)), null)
             context.socketFactory
         }
     }
 
-    private fun platformTrustManager(): X509TrustManager {
-        val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-        factory.init(null as KeyStore?)
-        return factory.trustManagers.filterIsInstance<X509TrustManager>().singleOrNull()
-            ?: error("The platform did not provide exactly one X509 trust manager")
+    /** Checks the configured trust chain before applying optional public-key pins. */
+    fun trustManager(pins: List<String>, caCertificate: String? = null): X509TrustManager {
+        val delegate = TlsCertificates.trustManager(caCertificate)
+        val normalized = normalize(pins)
+        if (normalized.isEmpty()) {
+            return delegate
+        }
+        return PinnedTrustManager(delegate, normalized.toSet())
     }
 
     private class PinnedTrustManager(
@@ -149,7 +161,23 @@ object TlsCertificatePins {
         }
 
         private fun checkPins(chain: Array<X509Certificate>) {
-            if (chain.none { pin(it) in pins }) {
+            if (pins.isEmpty()) {
+                return
+            }
+            // Ignore unrelated certificates appended by the peer; only the validated path can satisfy a pin.
+            val path = try {
+                val anchors = delegate.acceptedIssuers.map { TrustAnchor(it, null) }.toSet()
+                val selector = X509CertSelector().apply { certificate = chain.first() }
+                val parameters = PKIXBuilderParameters(anchors, selector).apply {
+                    isRevocationEnabled = false // The delegate already applied its revocation policy.
+                    addCertStore(CertStore.getInstance("Collection", CollectionCertStoreParameters(chain.toList())))
+                }
+                CertPathBuilder.getInstance("PKIX").build(parameters) as PKIXCertPathBuilderResult
+            } catch (e: GeneralSecurityException) {
+                throw CertificateException("Unable to validate the pinned server certificate path", e)
+            }
+            val certificates = path.certPath.certificates.filterIsInstance<X509Certificate>() + path.trustAnchor.trustedCert
+            if (certificates.none { pin(it) in pins }) {
                 throw CertificateException("The server certificate chain did not match a configured TLS pin")
             }
         }

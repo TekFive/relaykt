@@ -133,8 +133,8 @@ object SmtpProvider : Provider<EmailMessage> {
             put("mail.smtp.connectiontimeout", (configuration.connectionTimeoutMSecs ?: connectionTimeoutDefaultMSecsAck()).toString())
             put("mail.smtp.timeout", (configuration.timeoutMSecs ?: timeoutDefaultMSecsAck()).toString())
             put("mail.smtp.writetimeout", (configuration.writeTimeoutMSecs ?: writeTimeoutDefaultMSecsAck()).toString())
-            if (configuration.tls.certificatePinningEnabled) {
-                put("mail.smtp.ssl.socketFactory", TlsCertificatePins.smtpSocketFactory(configuration.tls.certificatePins))
+            if (configuration.tls.customTrustEnabled) {
+                put("mail.smtp.ssl.socketFactory", TlsCertificatePins.smtpSocketFactory(configuration.tls.certificatePins, configuration.tls.caCertificate))
                 put("mail.smtp.ssl.socketFactory.fallback", "false")
             }
         }
