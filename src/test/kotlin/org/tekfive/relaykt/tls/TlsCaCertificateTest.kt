@@ -105,9 +105,11 @@ class TlsCaCertificateTest {
     }
 
     private fun request(name: String, tls: TlsConfiguration) {
-        withServer(name) { port ->
-            val url = "https://localhost:$port/"
-            val client = TlsHttpClient.configure(OkHttpClient.Builder(), url, tls).build()
+        withServer(name) { address ->
+            val url = "https://localhost:${address.port}/"
+            // Keep hostname verification, but avoid fallback to an address the server isn't listening on.
+            val builder = OkHttpClient.Builder().dns { listOf(address.address) }
+            val client = TlsHttpClient.configure(builder, url, tls).build()
             try {
                 client.newCall(Request.Builder().url(url).build()).execute().use {
                     assertEquals(HttpURLConnection.HTTP_OK, it.code)
@@ -124,15 +126,15 @@ class TlsCaCertificateTest {
         assertEquals("true", properties["mail.smtp.ssl.checkserveridentity"])
         assertEquals("false", properties["mail.smtp.ssl.socketFactory.fallback"])
         val factory = properties["mail.smtp.ssl.socketFactory"] as SSLSocketFactory
-        withServer(name) { port ->
-            (factory.createSocket("localhost", port) as SSLSocket).use { socket ->
+        withServer(name) { address ->
+            (factory.createSocket("localhost", address.port) as SSLSocket).use { socket ->
                 socket.sslParameters = socket.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
                 socket.startHandshake()
             }
         }
     }
 
-    private fun withServer(name: String, action: (Int) -> Unit) {
+    private fun withServer(name: String, action: (InetSocketAddress) -> Unit) {
         val server = HttpsServer.create(InetSocketAddress("localhost", 0), 0)
         server.httpsConfigurator = HttpsConfigurator(material.context(name))
         server.createContext("/") { exchange ->
@@ -146,7 +148,7 @@ class TlsCaCertificateTest {
         }
         server.start()
         try {
-            action(server.address.port)
+            action(server.address)
         } finally {
             server.stop(0)
         }
