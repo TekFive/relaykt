@@ -2,6 +2,7 @@ package org.tekfive.relaykt.tls
 
 import java.net.Socket
 import java.net.URI
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.GeneralSecurityException
 import java.security.cert.CertPathBuilder
@@ -15,6 +16,7 @@ import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocketFactory
@@ -24,9 +26,9 @@ import javax.net.ssl.X509TrustManager
 /**
  * Validation and TLS plumbing for SHA-256 Subject Public Key Info (SPKI) certificate pins.
  *
- * Pins use the same `sha256/<base64>` representation as OkHttp. Pinning is additive to the
- * configured or platform trust store: a server certificate must both chain to a trusted CA and match at least
- * one configured pin. Multiple pins should be configured during certificate rotation.
+ * Pins use the same `sha256/<base64>` representation as OkHttp. Without a configured CA,
+ * a pinned certificate can establish trust. With a CA, both chain validation and a pin match
+ * are required. Multiple pins allow certificate rotation.
  */
 object TlsCertificatePins {
 
@@ -74,8 +76,7 @@ object TlsCertificatePins {
     }
 
     /**
-     * Builds an SSL socket factory for Jakarta Mail. CA trust validation runs first, then at
-     * least one certificate in the validated chain must match one of [pins], when pins are supplied.
+     * Builds an SSL socket factory for Jakarta Mail using the same trust rules as HTTP.
      */
     fun smtpSocketFactory(pins: List<String>, caCertificate: String? = null): SSLSocketFactory {
         val normalizedPins = normalize(pins)
@@ -88,45 +89,49 @@ object TlsCertificatePins {
         }
     }
 
-    /** Checks the configured trust chain before applying optional public-key pins. */
+    /** Validates against the configured CA, or allows pinned certificates to establish trust. */
     fun trustManager(pins: List<String>, caCertificate: String? = null): X509TrustManager {
         val delegate = TlsCertificates.trustManager(caCertificate)
         val normalized = normalize(pins)
         if (normalized.isEmpty()) {
             return delegate
         }
-        return PinnedTrustManager(delegate, normalized.toSet())
+        return PinnedTrustManager(delegate, normalized.toSet(), caCertificate)
     }
 
     private class PinnedTrustManager(
         private val delegate: X509TrustManager,
         private val pins: Set<String>,
+        private val caCertificate: String?,
     ) : X509ExtendedTrustManager() {
 
         override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
             val certificates = requireChain(chain)
-            delegate.checkServerTrusted(certificates, authType)
-            checkPins(certificates)
+            val trust = serverTrust(certificates)
+            trust.checkServerTrusted(certificates, authType)
+            checkPins(certificates, trust)
         }
 
         override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, socket: Socket?) {
             val certificates = requireChain(chain)
-            if (delegate is X509ExtendedTrustManager) {
-                delegate.checkServerTrusted(certificates, authType, socket)
+            val trust = serverTrust(certificates)
+            if (trust is X509ExtendedTrustManager) {
+                trust.checkServerTrusted(certificates, authType, socket)
             } else {
-                delegate.checkServerTrusted(certificates, authType)
+                trust.checkServerTrusted(certificates, authType)
             }
-            checkPins(certificates)
+            checkPins(certificates, trust)
         }
 
         override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?, engine: SSLEngine?) {
             val certificates = requireChain(chain)
-            if (delegate is X509ExtendedTrustManager) {
-                delegate.checkServerTrusted(certificates, authType, engine)
+            val trust = serverTrust(certificates)
+            if (trust is X509ExtendedTrustManager) {
+                trust.checkServerTrusted(certificates, authType, engine)
             } else {
-                delegate.checkServerTrusted(certificates, authType)
+                trust.checkServerTrusted(certificates, authType)
             }
-            checkPins(certificates)
+            checkPins(certificates, trust)
         }
 
         override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
@@ -160,13 +165,36 @@ object TlsCertificatePins {
             return Array(chain.size) { chain[it] }
         }
 
-        private fun checkPins(chain: Array<X509Certificate>) {
+        private fun serverTrust(chain: Array<X509Certificate>): X509TrustManager {
+            // JSSE skips validity checks for a directly trusted leaf certificate.
+            chain.first().checkValidity()
+            if (!caCertificate.isNullOrBlank()) {
+                return delegate
+            }
+            val pinned = chain.filter { pin(it) in pins }
+            if (pinned.isEmpty()) {
+                return delegate
+            }
+
+            // Only matching keys become anchors. PKIX still verifies the path to them.
+            val store = KeyStore.getInstance(KeyStore.getDefaultType())
+            store.load(null, null)
+            pinned.forEachIndexed { index, certificate ->
+                certificate.checkValidity()
+                store.setCertificateEntry("pin-$index", certificate)
+            }
+            val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            factory.init(store)
+            return factory.trustManagers.filterIsInstance<X509TrustManager>().single()
+        }
+
+        private fun checkPins(chain: Array<X509Certificate>, trust: X509TrustManager) {
             if (pins.isEmpty()) {
                 return
             }
             // Ignore unrelated certificates appended by the peer; only the validated path can satisfy a pin.
             val path = try {
-                val anchors = delegate.acceptedIssuers.map { TrustAnchor(it, null) }.toSet()
+                val anchors = trust.acceptedIssuers.map { TrustAnchor(it, null) }.toSet()
                 val selector = X509CertSelector().apply { certificate = chain.first() }
                 val parameters = PKIXBuilderParameters(anchors, selector).apply {
                     isRevocationEnabled = false // The delegate already applied its revocation policy.

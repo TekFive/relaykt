@@ -50,8 +50,37 @@ class TlsCaCertificateTest {
         val tls = TlsConfiguration(listOf(pin), material.ca)
         request("server", tls)
         assertFailsWith<SSLException> { request("rotated", tls) }
-        assertFailsWith<SSLException> { request("server", TlsConfiguration(listOf(pin))) }
+        request("server", TlsConfiguration(listOf(pin)))
         assertFailsWith<SSLException> { request("server", TlsConfiguration(listOf(pin), material.otherCa)) }
+    }
+
+    @Test
+    fun `pins alone trust self signed and private CA certificates for HTTP and SMTP`() {
+        for (name in listOf("self-signed", "server")) {
+            val tls = TlsConfiguration.pinned(TlsCertificatePins.pin(material.certificate(name)))
+            request(name, tls)
+            smtpHandshake(name, tls)
+            assertFailsWith<SSLException> { request("other", tls) }
+            assertFailsWith<SSLException> { smtpHandshake("other", tls) }
+        }
+    }
+
+    @Test
+    fun `pin only trust retains hostname and expiry checks`() {
+        for (name in listOf("wrong-host", "expired")) {
+            val tls = TlsConfiguration.pinned(TlsCertificatePins.pin(material.certificate(name)))
+            assertFailsWith<SSLException> { request(name, tls) }
+            assertFailsWith<SSLException> { smtpHandshake(name, tls) }
+        }
+    }
+
+    @Test
+    fun `pin only trust rejects an unrelated certificate appended to the chain`() {
+        val pin = TlsCertificatePins.pin(material.certificate("server"))
+        assertFailsWith<CertificateException> {
+            TlsCertificatePins.trustManager(listOf(pin))
+                .checkServerTrusted(arrayOf(material.certificate("other"), material.certificate("server")), "RSA")
+        }
     }
 
     @Test
@@ -94,7 +123,7 @@ class TlsCaCertificateTest {
         val tls = TlsConfiguration(listOf(pin), material.ca)
         smtpHandshake("server", tls)
         assertFailsWith<SSLException> { smtpHandshake("rotated", tls) }
-        assertFailsWith<SSLException> { smtpHandshake("server", TlsConfiguration(listOf(pin))) }
+        smtpHandshake("server", TlsConfiguration(listOf(pin)))
         assertFailsWith<SSLException> { smtpHandshake("wrong-host", TlsConfiguration(caCertificate = material.ca)) }
         assertFailsWith<SSLException> { smtpHandshake("expired", TlsConfiguration(caCertificate = material.ca)) }
     }

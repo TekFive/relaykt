@@ -7,7 +7,8 @@ import org.tekfive.jfk.ToJsonObject
  * Strongly typed TLS settings shared by every external RelayKt provider.
  *
  * [certificatePins] are SHA-256 Subject Public Key Info pins in `sha256/<base64>` form. An empty
- * list adds no pin restriction. [caCertificate] optionally replaces platform trust with a PEM CA bundle.
+ * list adds no pin restriction. Without [caCertificate], pinned certificates can establish trust.
+ * A supplied [caCertificate] replaces platform trust. When pins are also supplied, both checks must pass.
  */
 data class TlsConfiguration(
     val certificatePins: List<String> = emptyList(),

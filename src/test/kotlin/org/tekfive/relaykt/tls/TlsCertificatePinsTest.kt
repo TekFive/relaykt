@@ -1,6 +1,5 @@
 package org.tekfive.relaykt.tls
 
-import okhttp3.CertificatePinner
 import org.tekfive.relaykt.http.RelayHttpClient
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,10 +42,6 @@ class TlsCertificatePinsTest {
         assertNotSame(first, otherHost)
         assertEquals(false, first.followRedirects)
         assertEquals(false, first.followSslRedirects)
-        assertEquals(
-            CertificatePinner.Builder().add("api.example.com", TEST_PIN).build().pins,
-            first.certificatePinner.pins,
-        )
         assertFailsWith<IllegalArgumentException> {
             RelayHttpClient.clientFor("http://localhost:8080", listOf(TEST_PIN))
         }

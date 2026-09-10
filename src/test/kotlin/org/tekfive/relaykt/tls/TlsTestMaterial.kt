@@ -15,6 +15,8 @@ internal class TlsTestMaterial {
     val otherCa: String
 
     init {
+        keytool("-genkeypair", "-alias", "self-signed", "-keystore", "self-signed.p12", "-dname", "CN=localhost",
+            "-keyalg", "RSA", "-keysize", "2048", "-validity", "10", "-ext", "san=dns:localhost")
         createAuthority("ca")
         createAuthority("other-ca")
         ca = export("ca", "ca")
