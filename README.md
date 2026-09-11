@@ -122,7 +122,8 @@ val endpoint = Endpoint(
 
 HTTP providers verify the configured hostname and apply pins during TLS validation. SMTP custom trust applies to both
 STARTTLS and implicit SSL and is rejected when TLS is disabled. HTTP clients with custom trust reject redirects
-to keep CA trust and pins scoped to the configured endpoint. SMTP checks pins against the built
+to keep CA trust and pins scoped to the configured endpoint. SMTP custom-trust failures stop the connection
+without retrying through the default socket factory. SMTP checks pins against the built
 certificate path, so unrelated certificates appended by a peer cannot satisfy a pin. A pin
 mismatch fails as a recoverable network error, allowing a durable queued message to retry after
 certificate rotation or configuration repair.
@@ -196,7 +197,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.4")
+    implementation("com.github.TekFive:relaykt:v1.0.5")
 }
 ```
 

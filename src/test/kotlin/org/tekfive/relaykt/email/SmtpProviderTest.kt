@@ -52,7 +52,7 @@ class SmtpProviderTest {
         val properties = SmtpProvider.buildSessionProperties(configuration)
 
         assertNotNull(properties["mail.smtp.ssl.socketFactory"] as? SSLSocketFactory)
-        assertEquals("false", properties["mail.smtp.ssl.socketFactory.fallback"])
+        assertEquals("false", properties["mail.smtp.socketFactory.fallback"])
         assertFailsWith<IllegalArgumentException> {
             SmtpConfiguration(
                 host = "smtp.example.com",

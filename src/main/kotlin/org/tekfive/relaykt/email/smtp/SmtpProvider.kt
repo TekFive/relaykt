@@ -135,7 +135,8 @@ object SmtpProvider : Provider<EmailMessage> {
             put("mail.smtp.writetimeout", (configuration.writeTimeoutMSecs ?: writeTimeoutDefaultMSecsAck()).toString())
             if (configuration.tls.customTrustEnabled) {
                 put("mail.smtp.ssl.socketFactory", TlsCertificatePins.smtpSocketFactory(configuration.tls.certificatePins, configuration.tls.caCertificate))
-                put("mail.smtp.ssl.socketFactory.fallback", "false")
+                // Jakarta Mail uses this property for SSL too; fallback would discard custom trust.
+                put("mail.smtp.socketFactory.fallback", "false")
             }
         }
     }

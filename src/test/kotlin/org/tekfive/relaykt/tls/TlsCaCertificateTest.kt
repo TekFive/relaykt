@@ -2,6 +2,7 @@ package org.tekfive.relaykt.tls
 
 import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
+import com.sun.mail.util.SocketFetcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.jupiter.api.AfterAll
@@ -15,11 +16,13 @@ import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.security.cert.CertificateException
 import javax.net.ssl.SSLException
+import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotSame
+import kotlin.test.assertTrue
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TlsCaCertificateTest {
@@ -128,6 +131,44 @@ class TlsCaCertificateTest {
         assertFailsWith<SSLException> { smtpHandshake("expired", TlsConfiguration(caCertificate = material.ca)) }
     }
 
+    @Test
+    fun `SMTP transport trusts matching pins without a CA`() {
+        for (name in listOf("self-signed", "server")) {
+            smtpConnect(name, TlsConfiguration.pinned(TlsCertificatePins.pin(material.certificate(name))))
+        }
+    }
+
+    @Test
+    fun `SMTP transport preserves hostname errors instead of retrying with platform trust`() {
+        val tls = TlsConfiguration.pinned(TlsCertificatePins.pin(material.certificate("wrong-host")))
+        val failure = assertFailsWith<IOException> { smtpConnect("wrong-host", tls) }
+
+        assertTrue(failure.message.orEmpty().contains("Can't verify identity of server"), failure.toString())
+    }
+
+    @Test
+    fun `SMTP transport cannot bypass pins through the default socket factory`() {
+        val original = SSLContext.getDefault()
+        val fallback = SSLContext.getInstance("TLS")
+        fallback.init(null, arrayOf(TlsCertificates.trustManager(material.ca)), null)
+        SSLContext.setDefault(fallback)
+        try {
+            // The fallback trusts this CA, but the endpoint permits only the original server key.
+            val tls = TlsConfiguration(listOf(TlsCertificatePins.pin(material.certificate("server"))), material.ca)
+            assertFailsWith<SSLException> { smtpConnect("rotated", tls) }
+        } finally {
+            SSLContext.setDefault(original)
+        }
+    }
+
+    private fun smtpConnect(name: String, tls: TlsConfiguration) {
+        val properties = SmtpProvider.buildSessionProperties(SmtpConfiguration("localhost", sslEnabled = true, tls = tls))
+        withServer(name) { address ->
+            // Exercise Jakarta Mail's factory selection and fallback, not just the trust manager.
+            SocketFetcher.getSocket("localhost", address.port, properties, "mail.smtp", true).use { }
+        }
+    }
+
     private fun pem(name: String): String {
         val encoded = java.util.Base64.getMimeEncoder().encodeToString(material.certificate(name).encoded)
         return "-----BEGIN CERTIFICATE-----\n$encoded\n-----END CERTIFICATE-----"
@@ -153,7 +194,7 @@ class TlsCaCertificateTest {
     private fun smtpHandshake(name: String, tls: TlsConfiguration) {
         val properties = SmtpProvider.buildSessionProperties(SmtpConfiguration("localhost", tls = tls))
         assertEquals("true", properties["mail.smtp.ssl.checkserveridentity"])
-        assertEquals("false", properties["mail.smtp.ssl.socketFactory.fallback"])
+        assertEquals("false", properties["mail.smtp.socketFactory.fallback"])
         val factory = properties["mail.smtp.ssl.socketFactory"] as SSLSocketFactory
         withServer(name) { address ->
             (factory.createSocket("localhost", address.port) as SSLSocket).use { socket ->
