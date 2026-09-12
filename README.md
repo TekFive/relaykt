@@ -92,6 +92,9 @@ endpoint only and must contain valid CA certificates. Include both CAs during CA
 Hostname and server certificate validity checks remain enabled. HTTP and SMTP support the same
 trust rules, including asynchronous and queued delivery.
 
+SMTP verifies DNS names and IP address SANs through JSSE during the TLS handshake, for both
+STARTTLS and implicit TLS. This avoids Jakarta Mail's legacy IP identity check on Java 25.
+
 ```kotlin
 val tls = TlsConfiguration(caCertificate = caPem)
 // With an explicit CA, both CA validation and a matching pin are required.
@@ -197,7 +200,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.5")
+    implementation("com.github.TekFive:relaykt:v1.0.6")
 }
 ```
 

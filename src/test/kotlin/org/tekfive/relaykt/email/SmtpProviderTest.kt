@@ -28,7 +28,9 @@ class SmtpProviderTest {
         assertEquals("smtp.example.com", properties["mail.smtp.host"])
         assertEquals("587", properties["mail.smtp.port"])
         assertEquals("true", properties["mail.smtp.starttls.required"])
-        assertEquals("true", properties["mail.smtp.ssl.checkserveridentity"])
+        assertEquals("false", properties["mail.smtp.ssl.checkserveridentity"])
+        assertNotNull(properties["mail.smtp.ssl.socketFactory"] as? SSLSocketFactory)
+        assertEquals("false", properties["mail.smtp.socketFactory.fallback"])
         assertEquals("false", properties["mail.smtp.auth"])
         assertNull(SmtpProvider.buildAuthenticator(configuration))
         assertFailsWith<IllegalArgumentException> { SmtpProvider.validateConfiguration(json { "host" set "" }) }

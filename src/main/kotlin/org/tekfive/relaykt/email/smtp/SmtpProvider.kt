@@ -25,7 +25,7 @@ import org.tekfive.relaykt.SendResult
 import org.tekfive.relaykt.email.EmailMessage
 import org.tekfive.relaykt.provider.Provider
 import org.tekfive.relaykt.provider.ProviderConfigurations
-import org.tekfive.relaykt.tls.TlsCertificatePins
+import org.tekfive.relaykt.tls.SmtpSocketFactory
 import java.util.Properties
 import jakarta.mail.MessagingException as JakartaMessagingException
 
@@ -128,16 +128,15 @@ object SmtpProvider : Provider<EmailMessage> {
             // When STARTTLS is enabled, refuse to fall back to plaintext if the server rejects it.
             put("mail.smtp.starttls.required", startTls.toString())
             put("mail.smtp.ssl.enable", (configuration.sslEnabled ?: false).toString())
-            // Jakarta Mail defaults server identity checking to false; always enable it.
-            put("mail.smtp.ssl.checkserveridentity", "true")
+            // JSSE verifies identities during the handshake. Jakarta Mail's legacy check
+            // rejects valid IP SANs when JDK internals are inaccessible.
+            put("mail.smtp.ssl.checkserveridentity", "false")
+            put("mail.smtp.ssl.socketFactory", SmtpSocketFactory(configuration.tls))
+            // Jakarta Mail uses this property for SSL too; fallback would discard verification.
+            put("mail.smtp.socketFactory.fallback", "false")
             put("mail.smtp.connectiontimeout", (configuration.connectionTimeoutMSecs ?: connectionTimeoutDefaultMSecsAck()).toString())
             put("mail.smtp.timeout", (configuration.timeoutMSecs ?: timeoutDefaultMSecsAck()).toString())
             put("mail.smtp.writetimeout", (configuration.writeTimeoutMSecs ?: writeTimeoutDefaultMSecsAck()).toString())
-            if (configuration.tls.customTrustEnabled) {
-                put("mail.smtp.ssl.socketFactory", TlsCertificatePins.smtpSocketFactory(configuration.tls.certificatePins, configuration.tls.caCertificate))
-                // Jakarta Mail uses this property for SSL too; fallback would discard custom trust.
-                put("mail.smtp.socketFactory.fallback", "false")
-            }
         }
     }
 

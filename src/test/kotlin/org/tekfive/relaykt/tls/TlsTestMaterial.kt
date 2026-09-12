@@ -22,6 +22,7 @@ internal class TlsTestMaterial {
         ca = export("ca", "ca")
         otherCa = export("other-ca", "other-ca")
         createServer("server", "ca", "localhost")
+        createServer("ip-server", "ca", "localhost", alternativeNames = "dns:localhost,ip:127.0.0.1")
         createServer("rotated", "ca", "localhost")
         createServer("other", "other-ca", "localhost")
         createServer("wrong-host", "ca", "other.example.test")
@@ -58,12 +59,12 @@ internal class TlsTestMaterial {
         return Files.readString(directory.resolve("$alias.pem"))
     }
 
-    private fun createServer(name: String, issuer: String, host: String, start: String = "-1d", days: String = "10") {
+    private fun createServer(name: String, issuer: String, host: String, start: String = "-1d", days: String = "10", alternativeNames: String = "dns:$host") {
         keytool("-genkeypair", "-alias", name, "-keystore", "$name.p12", "-dname", "CN=$host", "-keyalg", "RSA", "-keysize", "2048")
         keytool("-certreq", "-alias", name, "-keystore", "$name.p12", "-file", "$name.csr")
         keytool("-gencert", "-alias", issuer, "-keystore", "$issuer.p12", "-infile", "$name.csr", "-outfile", "$name.pem", "-rfc",
             "-startdate", start, "-validity", days, "-ext", "bc=ca:false", "-ext", "ku=digitalSignature,keyEncipherment",
-            "-ext", "eku=serverAuth", "-ext", "san=dns:$host")
+            "-ext", "eku=serverAuth", "-ext", "san=$alternativeNames")
         keytool("-importcert", "-alias", issuer, "-keystore", "$name.p12", "-file", "$issuer.pem", "-noprompt")
         keytool("-importcert", "-alias", name, "-keystore", "$name.p12", "-file", "$name.pem", "-noprompt")
     }
