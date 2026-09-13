@@ -204,7 +204,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.7")
+    implementation("com.github.TekFive:relaykt:v1.0.8")
 }
 ```
 
