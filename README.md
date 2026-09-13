@@ -13,7 +13,7 @@ It is built on the TekFive foundation libraries:
 
 Requirements: Java 25, Kotlin 2.4, PostgreSQL (only for the durable queue and templates).
 
-RelayKt 1.0.9 builds against KEEP 1.0.14. Consumers overriding KEEP must test queue
+RelayKt 1.0.10 builds against KEEP 1.0.14. Consumers overriding KEEP must test queue
 dispatch with their runtime version; changes to KEEP's job method signatures can
 break already-compiled RelayKt artifacts even when application compilation succeeds.
 
@@ -208,7 +208,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.9")
+    implementation("com.github.TekFive:relaykt:v1.0.10")
 }
 ```
 
