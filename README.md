@@ -145,14 +145,18 @@ At startup:
 
 ```kotlin
 Relay.registerEndpointResolver { id -> endpointRepository.find(id) }   // your endpoint store
+jobRegistry += DispatchQueuedMessagesJob                                // dispatch + recovery
 jobRegistry += SendQueuedMessageJob                                     // KEEP job coordinator
 jobRegistry += UpdateDeliveryReceiptsJob
 jobRegistry += CleanQueuedMessagesJob
-MessageQueueProcessor.start()
 ```
 
-`MessageQueueProcessor` polls for ready messages (honouring `deliverAfter` and retry backoff),
-creates a `SendQueuedMessageJob` per message, and recovers messages stalled in PENDING/PROCESSING.
+`DispatchQueuedMessagesJob` runs immediately on first scheduling, then every 20 seconds through
+KEEP, exclusively across application instances. It honours `deliverAfter` and retry backoff,
+creates a `SendQueuedMessageJob` per ready message, and recovers stalled PENDING/PROCESSING messages.
+Each sweep drains successive bounded batches, checking cancellation and heartbeat between messages.
+Claims and delivery jobs commit together. KEEP records dispatch failures and owns worker shutdown;
+there is no separate RelayKt polling thread. Register the dispatch job when upgrading to 1.0.7.
 Each attempt is recorded in `relay_delivery_attempts`; with `trackReceipt = true` a
 `relay_delivery_receipts` row per recipient is polled by `UpdateDeliveryReceiptsJob` until the
 provider confirms delivery, reports failure, or `maxReceiptWaitMinutes` elapses.
@@ -181,8 +185,8 @@ Relay.send(rendered.toSmsMessage(listOf(MessageAddress("+15555550100"))), "twili
 | `RELAY_MAX_ATTACHMENTS_SIZE_BYTES` | 26214400 | Global attachment limit (override per endpoint) |
 | `RELAY_HTTP_CONNECT_TIMEOUT_SECONDS` / `RELAY_HTTP_READ_TIMEOUT_SECONDS` / `RELAY_HTTP_CALL_TIMEOUT_SECONDS` | 10 / 30 / 60 | Provider HTTP timeouts |
 | `SMTP_CONNECTION_TIMEOUT_DEFAULT_MSECS` / `SMTP_TIMEOUT_DEFAULT_MSECS` / `SMTP_WRITE_TIMEOUT_DEFAULT_MSECS` | 10000 | SMTP timeouts when the endpoint sets none |
-| `RELAY_QUEUE_POLL_SLEEP_SECONDS` | 20 | Processor idle sleep |
-| `RELAY_QUEUE_BATCH_SIZE` | 100 | Messages dispatched per poll |
+| `DISPATCH_QUEUED_MESSAGES_JOB_FIXED_INTERVAL_SECONDS` | 20 | Scheduled queue sweep interval; replaces `RELAY_QUEUE_POLL_SLEEP_SECONDS` |
+| `RELAY_QUEUE_BATCH_SIZE` | 100 | Messages loaded per batch; each sweep drains successive batches |
 | `RELAY_QUEUE_MAX_PENDING_MINUTES` | 30 | Stall detection threshold |
 | `RELAY_QUEUE_RETRY_BASE_DELAY_SECONDS` / `RELAY_QUEUE_RETRY_MAX_DELAY_SECONDS` | 120 / 3600 | Exponential retry backoff |
 | `RELAY_QUEUE_DEFAULT_MAX_RECEIPT_WAIT_MINUTES` | 1440 | Receipt timeout when the message sets none |
@@ -200,7 +204,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.github.TekFive:relaykt:v1.0.6")
+    implementation("com.github.TekFive:relaykt:v1.0.7")
 }
 ```
 

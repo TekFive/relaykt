@@ -16,81 +16,26 @@ import org.tekfive.keep.db.dbCommit
 import org.tekfive.keep.job.db.JobRecordsTable
 
 /**
- * Background poller that turns ready queued messages into [SendQueuedMessageJob]s and recovers
- * messages stuck in PENDING/PROCESSING.
- *
- * Runs on a single daemon thread started with [start]. [processOnce] is the unit of work and can
- * be called directly (tests, or applications that schedule their own polling).
+ * Claims ready messages and recovers stalled deliveries for [DispatchQueuedMessagesJob].
+ * Each claim and its delivery job commit together, so interrupted sweeps can resume safely.
  */
-object MessageQueueProcessor : Runnable {
+object MessageQueueProcessor {
 
     private val log = LoggerFactory.getLogger(MessageQueueProcessor::class.java)
 
-    val pollSleepSecondsAck = Ack.int("POLL_SLEEP_SECONDS", 20, min = 1, namespace = NAMESPACE, description = "Seconds the message queue processor sleeps between polls when no work was found.")
-
     val maxPendingMinutesAck = Ack.int("MAX_PENDING_MINUTES", 30, min = 1, namespace = NAMESPACE, description = "Minutes a message may stay in PENDING or PROCESSING before being considered stalled.")
 
-    val batchSizeAck = Ack.int("BATCH_SIZE", 100, min = 1, namespace = NAMESPACE, description = "Maximum ready messages dispatched per poll.")
-
-    @Volatile
-    private var processThread: Thread? = null
-
-    private val lock = Any()
-
-    fun start() {
-        synchronized(lock) {
-            if (processThread?.isAlive != true) {
-                processThread = Thread(this, "RelayKt-MessageQueueProcessor").apply {
-                    isDaemon = true
-                    start()
-                }
-            }
-        }
-    }
-
-    fun stop(joinTimeoutSeconds: Int = 15) {
-        val thread: Thread?
-        synchronized(lock) {
-            thread = processThread
-            processThread = null
-        }
-        if (thread != null) {
-            thread.interrupt()
-            thread.join(joinTimeoutSeconds * 1000L)
-        }
-    }
-
-    val isRunning: Boolean
-        get() = processThread?.isAlive == true
-
-    override fun run() {
-        while (processThread == Thread.currentThread()) {
-            var workDone = false
-            try {
-                workDone = processOnce() > 0
-            } catch (e: Exception) {
-                log.error("Message queue processor failed while processing queued messages.", e)
-            }
-            if (processThread == Thread.currentThread() && !workDone) {
-                try {
-                    Thread.sleep(pollSleepSecondsAck() * 1000L)
-                } catch (e: InterruptedException) {
-                    // Interrupt is the stop signal; the loop condition decides whether to exit.
-                    log.debug("Message queue processor poll sleep interrupted.")
-                }
-            }
-        }
-    }
+    val batchSizeAck = Ack.int("BATCH_SIZE", 100, min = 1, namespace = NAMESPACE, description = "Maximum messages loaded per dispatch or recovery batch. Each sweep drains successive batches.")
 
     /**
-     * Dispatches every ready message and recovers stalled ones. Returns the number of messages
-     * acted on (dispatched or recovered).
+     * Dispatches and recovers one batch each. The callback lets Keep check cancellation and
+     * heartbeat before each claim; failures propagate to the scheduled job.
      */
-    fun processOnce(now: Long = System.currentTimeMillis()): Int {
-        return dispatchReadyMessages(now) + recoverStalledMessages(now)
+    fun processOnce(now: Long = System.currentTimeMillis(), checkIn: () -> Unit = {}): Int {
+        return dispatchReadyMessages(now, checkIn) + recoverStalledMessages(now, checkIn)
     }
 
-    internal fun dispatchReadyMessages(now: Long): Int {
+    internal fun dispatchReadyMessages(now: Long, checkIn: () -> Unit = {}): Int {
         var dispatched = 0
         db {
             val ready = QueuedMessageTable
@@ -106,6 +51,7 @@ object MessageQueueProcessor : Runnable {
                 .map { row -> row[QueuedMessageTable.id] to row[QueuedMessageTable.state] }
 
             for ((queuedMessageId, state) in ready) {
+                checkIn()
                 // Optimistic state guard: only the poller that flips QUEUED/WAITING_TO_RETRY -> PENDING
                 // creates the job, so several processors can share one database safely.
                 val updated = QueuedMessageTable.update({ (QueuedMessageTable.id eq queuedMessageId) and (QueuedMessageTable.state eq state) }) { statement ->
@@ -122,7 +68,7 @@ object MessageQueueProcessor : Runnable {
         return dispatched
     }
 
-    internal fun recoverStalledMessages(now: Long): Int {
+    internal fun recoverStalledMessages(now: Long, checkIn: () -> Unit = {}): Int {
         var recovered = 0
         val cutoffAt = now - maxPendingMinutesAck() * 60_000L
         db {
@@ -132,9 +78,12 @@ object MessageQueueProcessor : Runnable {
                     (QueuedMessageTable.state inList listOf(QueuedMessageState.PENDING, QueuedMessageState.PROCESSING)) and
                         (QueuedMessageTable.lastStateChangeAt lessEq cutoffAt)
                 }
+                .orderBy(QueuedMessageTable.id)
+                .limit(batchSizeAck())
                 .map { row -> row[QueuedMessageTable.id] to row[QueuedMessageTable.state] }
 
             for ((queuedMessageId, state) in stalled) {
+                checkIn()
                 // A stalled PENDING message never started sending, so re-queueing cannot double-send.
                 // A stalled PROCESSING message has an unknown send outcome, so it is timed out.
                 val newState = if (state == QueuedMessageState.PENDING) QueuedMessageState.QUEUED else QueuedMessageState.TIMED_OUT
